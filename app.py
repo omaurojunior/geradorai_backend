@@ -1,3 +1,23 @@
+INGREDIENTES_PROIBIDOS = [
+    "lombriga", "bosta", "xixi", "cocô", "coco", "fezes", "urina", "sangue", "esperma", "semen", "vômito", "vomito", "pus", "larva", "verme", "barata", "rato", "ratazana", "carniça", "cadáver", "cadaver", "carne humana", "humano", "pessoa", "gente"
+]
+
+def contem_ingrediente_proibido(ingredientes):
+    for ingrediente in ingredientes:
+        ingrediente_baixo = ingrediente.lower()
+        for proibido in INGREDIENTES_PROIBIDOS:
+            if proibido in ingrediente_baixo:
+                return True, proibido
+    return False, None
+def contem_conteudo_inapropriado(texto):
+    palavras_bloqueadas = [
+        "sexo", "pornografia", "pornográfico", "violência", "violento", "ódio", "racismo", "discriminação", "assassinato", "morte", "estupro", "pedofilia", "terrorismo", "droga", "drogas", "arma", "armas", "suicídio", "suicidio", "autolesão", "autolesao", "preconceito", "homofobia", "xenofobia", "nazismo", "fascismo", "genocídio", "genocidio"
+    ]
+    texto_baixo = texto.lower()
+    for palavra in palavras_bloqueadas:
+        if palavra in texto_baixo:
+            return True
+    return False
 # app.py (Parte 1)
 import os
 import json
@@ -67,20 +87,50 @@ def generate():
             "status": "error",
             "message": "Você precisa fornecer no mínimo 3 ingredientes."
         }), 400
+
+    # Validação 3: Ingredientes impróprios
+    tem_proibido, ingrediente_proibido = contem_ingrediente_proibido(ingredientes)
+    if tem_proibido:
+        return jsonify({
+            "status": "error",
+            "message": f"Ingrediente impróprio detectado: '{ingrediente_proibido}'. Por favor, envie apenas ingredientes adequados para alimentação."
+        }), 400
     
     try:
         # Pede para o Gemini gerar a receita (retorna como string JSON)
         receita_json_string = generate_recipe(ingredientes)
-        
+
+        # Filtro de conteúdo impróprio (na string bruta)
+        if contem_conteudo_inapropriado(receita_json_string):
+            return jsonify({
+                "status": "error",
+                "message": "Conteúdo impróprio detectado na resposta da IA. Solicite novamente com outros ingredientes."
+            }), 400
+
         # Converte a string JSON em Dicionário Python para o Flask organizar a resposta
         receita_estruturada = json.loads(receita_json_string)
-        
+
+        # Filtro de conteúdo impróprio (em cada campo)
+        for valor in receita_estruturada.values():
+            if isinstance(valor, str) and contem_conteudo_inapropriado(valor):
+                return jsonify({
+                    "status": "error",
+                    "message": "Conteúdo impróprio detectado na resposta da IA. Solicite novamente com outros ingredientes."
+                }), 400
+            if isinstance(valor, list):
+                for item in valor:
+                    if isinstance(item, str) and contem_conteudo_inapropriado(item):
+                        return jsonify({
+                            "status": "error",
+                            "message": "Conteúdo impróprio detectado na resposta da IA. Solicite novamente com outros ingredientes."
+                        }), 400
+
         return jsonify({
             "status": "success",
             "ingredientes_enviados": ingredientes,
             "dados_receita": receita_estruturada
         }), 200
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
